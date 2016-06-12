@@ -10,7 +10,7 @@ use std::io::Read;
 use regex::Regex;
 use rss;
 
-use liquid::{Renderable, LiquidOptions, Context, Value};
+use liquid::{Renderable, LiquidOptions, Context, Value, FilterError};
 
 use pulldown_cmark as cmark;
 use liquid;
@@ -242,6 +242,23 @@ impl Document {
 
         let mut data = Context::with_values(self.get_attributes());
         data.set_val("posts", Value::Array(post_data.clone()));
+        data.add_filter("date", Box::new(move |value, args| {
+            if args.len() != 1 {
+                return Err(FilterError::InvalidArgumentCount("1".to_owned()));
+            }
+
+            let date = match value {
+                &Value::Str(ref s) => try!(DateTime::parse_from_str(&s, "%d %B %Y %H:%M:%S %z").map_err(|_| FilterError::InvalidType("date".to_owned()))),
+                _ => return FilterError::invalid_type("date string"),
+            };
+
+            let format = match args[0] {
+                Value::Str(ref s) => &**s,
+                _ => return FilterError::invalid_type("format string"),
+            };
+
+            Ok(Value::Str(format!("{}", date.format(format))))
+        }));
 
         let mut html = try!(template.render(&mut data)).unwrap_or(String::new());
 
